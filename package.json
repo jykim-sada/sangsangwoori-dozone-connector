@@ -1,0 +1,10 @@
+{
+  "name": "sangsangwoori-dozone-sync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "더존 비즈박스 알파 지출결의 → 원천세 지급관리 웹앱 품의번호 자동 기재",
+  "main": "dozone-sync.js",
+  "scripts": { "sync": "node dozone-sync.js", "dry": "node dozone-sync.js --dry-run", "first": "node dozone-sync.js --headed --dry-run" },
+  "dependencies": { "playwright": "^1.49.0" },
+  "optionalDependencies": { "mssql": "^11.0.1" }
+}

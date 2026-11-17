@@ -1,0 +1,9 @@
+config.json
+bizbox-state.json
+bizbox-cache.json
+sync.log
+update.log
+.state.json
+.lastrun
+node_modules/
+items*.json

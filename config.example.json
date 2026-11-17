@@ -1,0 +1,45 @@
+{
+  "appUrl": "https://script.google.com/macros/s/AKfycbzl-WmpsJ5SPEyzj5eRX3wWps0qRHe2JOvchSkyGHpWOG_OAORBid0nbV3XHSaXTYeK/exec",
+  "key": "관리 → 데이터 → 더존 연동에서 '보기'로 확인한 연동 키",
+  "dailyHour": 9,
+  "source": {
+    "type": "bizbox",
+    "url": "https://gw.openknowl.com",
+    "days": 60,
+    "menuId": "2002110000",
+    "docSts": "",
+    "formFilter": "지출결의서\\(계좌이체\\)",
+    "stateFile": "bizbox-state.json"
+  },
+  "_source_mssql_example": {
+    "type": "mssql",
+    "connection": {
+      "server": "더존 DB 서버 주소",
+      "database": "DB 이름",
+      "user": "읽기전용 계정",
+      "password": "비밀번호",
+      "options": {
+        "encrypt": false,
+        "trustServerCertificate": true
+      }
+    },
+    "query": "SELECT 지결번호 AS approvalNo, 제목 AS title, 합계금액 AS amount, 기안일 AS [date], 시행일 AS execDate, 상태 AS status, 기안자 AS drafter FROM 지출결의테이블 WHERE 기안일 >= DATEADD(day,-60,GETDATE())"
+  },
+  "_source_http_example": {
+    "type": "http",
+    "url": "https://더존-API-주소/expense/list?days=60",
+    "headers": {
+      "Authorization": "Bearer 발급받은-토큰"
+    },
+    "path": "data.list",
+    "map": {
+      "approvalNo": "docNo",
+      "title": "subject",
+      "amount": "totalAmount",
+      "date": "draftDate",
+      "execDate": "payDate",
+      "status": "statusName",
+      "drafter": "drafterName"
+    }
+  }
+}
