@@ -15,7 +15,7 @@ const ymd = d => d.toISOString().slice(0, 10);
    A) 한 줄에 숫자 셀 셋이 "실지급액 + 원천징수액 = 총지급액"인 줄 (팀 양식 "기타소득 실지급액/원천징수액/원천징수전 총금액", "세후 금액/기타소득세/세전 금액", "공급가액/세액/합계금액"에 원천세를 적은 양식 모두).
       원천징수가 0원인 문서(소액이라 세금이 없는 활동비 등)도 이 줄로 읽는다. 앞 줄(머리글)에 원천징수·소득세·세전·세후·실지급 같은 말이 있거나 비율이 8.8%·3.3%·22% 일 때만 채택해 예산(공급가액/부가세/합계) 줄과 섞이지 않게 한다.
    B) 화면의 숫자들 가운데 총액·원천징수·실지급 세 수의 비율 관계로 찾기 (값이 한 줄에 모여 있지 않은 양식).
-   C) 계좌이체 표의 이체금액 합(=실지급액). 셀 안의 "(기타소득세 277,200)" 같은 표기가 있으면 더해 총액을 만든다. 겹친 표의 같은 줄은 한 번만 센다.
+   C) 계좌이체 표의 이체금액 합(=실지급액). 셀 안의 "(기타소득세 277,200)" 같은 표기가 있으면 더해 총액을 만든다. 겹친 표의 같은 줄은 한 번만 센다. 문서에 기타소득·사업소득·원천징수 같은 말이 있는 문서에만(일반 구매·공과금 이체 문서는 금액 0 → 보류).
    결과 how: 'row' | 'ratio' | 'transfer' | '' (못 읽음) */
 function extractInPage() {
   const norm = s => String(s || '').replace(/\s+/g, '');
@@ -45,7 +45,8 @@ function extractInPage() {
     const col = Array.from(trs[hi].children).findIndex(c => /^이체금액$/.test(norm(c.textContent)));
     trs.slice(hi + 1).forEach(tr => { if (seen.has(tr)) return; seen.add(tr); const c = tr.children[col]; if (!c) return; const t = c.textContent; const m = /([\d,]{4,})/.exec(t); if (!m) return; net += Number(m[1].replace(/,/g, '')); const w = /(원천징수|소득세|세금)[^\d]*([\d,]{3,})/.exec(t); if (w) wh += Number(w[2].replace(/,/g, '')); });
   });
-  if (net > 0) return { gross: net + wh, net, wh, execDate, how: 'transfer' };
+  /* 이체금액 합은 문서에 기타소득·사업소득·원천징수 같은 말이 있을 때만 쓴다: 물품 구매·공과금 같은 일반 이체 문서까지 금액 있는 문서로 보내면 사업명·금액이 우연히 맞는 요청에 잘못 적힐 수 있다 */
+  if (net > 0 && /기타소득|사업소득|원천징수|원천세/.test(norm(document.body.innerText))) return { gross: net + wh, net, wh, execDate, how: 'transfer' };
   return { gross: 0, net: 0, wh: 0, execDate, how: '' };
 }
 
