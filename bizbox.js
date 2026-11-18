@@ -11,16 +11,42 @@ const txt = v => String(v == null ? '' : v).trim();
 const dateStr = v => { const m = /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/.exec(txt(v)); return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : ''; };
 const ymd = d => d.toISOString().slice(0, 10);
 
-/* 문서 화면에서 금액·시행일자 읽기 (브라우저 안에서 실행) */
+/* 문서 화면에서 금액·시행일자 읽기 (브라우저 안에서 실행). 세 단계로 찾는다:
+   A) 한 줄에 숫자 셀 셋이 "실지급액 + 원천징수액 = 총지급액"인 줄 (팀 양식 "기타소득 실지급액/원천징수액/원천징수전 총금액", "세후 금액/기타소득세/세전 금액", "공급가액/세액/합계금액"에 원천세를 적은 양식 모두).
+      원천징수가 0원인 문서(소액이라 세금이 없는 활동비 등)도 이 줄로 읽는다. 앞 줄(머리글)에 원천징수·소득세·세전·세후·실지급 같은 말이 있거나 비율이 8.8%·3.3%·22% 일 때만 채택해 예산(공급가액/부가세/합계) 줄과 섞이지 않게 한다.
+   B) 화면의 숫자들 가운데 총액·원천징수·실지급 세 수의 비율 관계로 찾기 (값이 한 줄에 모여 있지 않은 양식).
+   C) 계좌이체 표의 이체금액 합(=실지급액). 셀 안의 "(기타소득세 277,200)" 같은 표기가 있으면 더해 총액을 만든다. 겹친 표의 같은 줄은 한 번만 센다.
+   결과 how: 'row' | 'ratio' | 'transfer' | '' (못 읽음) */
 function extractInPage() {
   const norm = s => String(s || '').replace(/\s+/g, '');
-  const leaf = Array.from(document.querySelectorAll('td,th,span,div,p')).filter(x => x.children.length === 0 && norm(x.textContent).length < 40);
+  const numOf = t => { const m = /^\(?([\d,]+)\)?(원)?$/.exec(norm(t)); return m ? Number(m[1].replace(/,/g, '')) : NaN; };
   const tds = Array.from(document.querySelectorAll('td,th')).filter(x => norm(x.textContent).length < 60);
   const after = re => { const c = tds.find(x => re.test(norm(x.textContent)) && norm(x.textContent).length < 30); return c && c.nextElementSibling ? c.nextElementSibling.textContent.trim() : ''; };
-  const nums = [...new Set(leaf.map(x => x.textContent.trim()).filter(t => /^[\d,]{4,}\s*원?$/.test(t)).map(t => Number(t.replace(/[^\d]/g, ''))).filter(v => v > 0))];
+  const execDate = after(/^시행일자$/);
+  const WH = /원천징수|소득세|세전|세후|실지급/; const RATIO = r => (r >= 0.0868 && r <= 0.0882) || (r >= 0.0324 && r <= 0.0332) || (r >= 0.2195 && r <= 0.2205);
+  let A = null;
+  Array.from(document.querySelectorAll('tr')).forEach(tr => {
+    const cells = Array.from(tr.children); const vals = cells.map(c => numOf(c.textContent)).filter(v => !isNaN(v));
+    if (vals.length !== 3 || !(vals[2] > 0) || vals[0] + vals[1] !== vals[2]) return;
+    const prev = tr.previousElementSibling; const labels = norm((prev ? prev.textContent : '') + cells.filter(c => isNaN(numOf(c.textContent))).map(c => c.textContent).join(''));
+    const okLabel = WH.test(labels); const okRatio = RATIO(vals[1] / vals[2]); if (!(okLabel || okRatio)) return;
+    const score = (okLabel ? 2 : 0) + (okRatio ? 1 : 0);
+    if (!A || score > A.score || (score === A.score && vals[2] > A.c)) A = { a: vals[0], b: vals[1], c: vals[2], score };
+  });
+  if (A) return { gross: A.c, net: A.a, wh: A.b, execDate, how: 'row' };
+  const leaf = Array.from(document.querySelectorAll('td,th,span,div,p')).filter(x => x.children.length === 0 && norm(x.textContent).length < 40);
+  const nums = [...new Set(leaf.map(x => numOf(x.textContent)).filter(v => v >= 1000))];
   let best = null;
-  nums.forEach(c => nums.forEach(b => { if (b >= c) return; const a = c - b; if (!nums.includes(a)) return; const r = b / c; if ((r > 0.0868 && r < 0.0882) || (r > 0.0324 && r < 0.0332)) { if (!best || c > best.c) best = { a, b, c }; } }));
-  return { gross: best ? best.c : 0, net: best ? best.a : 0, wh: best ? best.b : 0, execDate: after(/^시행일자$/) };
+  nums.forEach(c => nums.forEach(b => { if (b >= c) return; const a = c - b; if (!nums.includes(a)) return; if (RATIO(b / c)) { if (!best || c > best.c) best = { a, b, c }; } }));
+  if (best) return { gross: best.c, net: best.a, wh: best.b, execDate, how: 'ratio' };
+  let net = 0, wh = 0; const seen = new Set();
+  Array.from(document.querySelectorAll('table')).forEach(tb => {
+    const trs = Array.from(tb.querySelectorAll('tr')); const hi = trs.findIndex(tr => Array.from(tr.children).some(c => /^이체금액$/.test(norm(c.textContent)))); if (hi < 0) return;
+    const col = Array.from(trs[hi].children).findIndex(c => /^이체금액$/.test(norm(c.textContent)));
+    trs.slice(hi + 1).forEach(tr => { if (seen.has(tr)) return; seen.add(tr); const c = tr.children[col]; if (!c) return; const t = c.textContent; const m = /([\d,]{4,})/.exec(t); if (!m) return; net += Number(m[1].replace(/,/g, '')); const w = /(원천징수|소득세|세금)[^\d]*([\d,]{3,})/.exec(t); if (w) wh += Number(w[2].replace(/,/g, '')); });
+  });
+  if (net > 0) return { gross: net + wh, net, wh, execDate, how: 'transfer' };
+  return { gross: 0, net: 0, wh: 0, execDate, how: '' };
 }
 
 async function readBizbox(src, opts) {
@@ -57,17 +83,17 @@ async function readBizbox(src, opts) {
           문서 3건을 동시에 열고, 화면이 그려지면 바로 읽어 시간을 줄인다. 진행 상황을 창에 표시한다 */
     const cacheFile = path.resolve(__dirname, src.cacheFile || 'bizbox-cache.json'); let cache = {};
     try { cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')) || {}; } catch (e) { cache = {}; }
-    const toRead = docs.filter(d => { const c = cache[txt(d.DOC_NO)]; return !(c && c.sts === txt(d.DOC_STS)); });
+    const toRead = docs.filter(d => { const c = cache[txt(d.DOC_NO)]; return !(c && c.sts === txt(d.DOC_STS) && (c.gross > 0 || c.v === 2)); }); /* 금액을 못 읽은(0원) 문서는 새 읽기 방식(v2)으로 한 번 더 */
     console.log(`상세 읽기: 새로 읽을 문서 ${toRead.length}건, 기억해 둔 문서 ${docs.length - toRead.length}건`);
     const details = {}; let done = 0; const t0 = Date.now();
     async function readOne(pg, d) {
-      let detail = { gross: 0, net: 0, wh: 0, execDate: '' };
+      let detail = { gross: 0, net: 0, wh: 0, execDate: '', how: '' };
       try {
         await pg.goto(`${base}/eap/ea/docpop/EAAppDocViewPop.do?doc_id=${d.DOC_ID}&form_id=${d.FORM_ID}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
         await pg.waitForFunction(() => document.body && document.body.innerText.replace(/\s/g, '').length > 200, null, { timeout: 6000 }).catch(() => {});
         await pg.waitForTimeout(700); detail = await pg.evaluate(extractInPage);
       } catch (e) { console.log('  상세 읽기 실패', d.DOC_NO, String(e.message).split('\n')[0]); }
-      details[txt(d.DOC_NO)] = detail; cache[txt(d.DOC_NO)] = { sts: txt(d.DOC_STS), gross: detail.gross || 0, net: detail.net || 0, wh: detail.wh || 0, execDate: detail.execDate || '', readAt: new Date().toISOString() };
+      details[txt(d.DOC_NO)] = detail; cache[txt(d.DOC_NO)] = { sts: txt(d.DOC_STS), gross: detail.gross || 0, net: detail.net || 0, wh: detail.wh || 0, execDate: detail.execDate || '', how: detail.how || '', v: 2, readAt: new Date().toISOString() };
       done++; if (done % 5 === 0 || done === toRead.length) console.log(`  읽는 중 ${done}/${toRead.length} (${Math.round((Date.now() - t0) / 1000)}초)`);
     }
     const queue = toRead.slice(); const workers = [];
