@@ -6,8 +6,8 @@
           node dozone-sync.js --dry-run       (웹앱에 반영하지 않고 짝짓기 결과만 봄)
           node dozone-sync.js --headed        (비즈박스: 브라우저를 보이게 띄워 첫 로그인·2차 인증 처리)
    설정:  같은 폴더의 config.json (config.example.json 을 복사해 채운다)
-          node dozone-sync.js --auto          (작업 스케줄러용: 5분마다 실행해 두면 ① 10분마다 그룹웨어 로그인이 살아 있는지 확인해 세션을 늘리고 ② 웹앱에 노트북 상태를 알리며
-                                               ③ 웹앱에서 "지금 더존과 연동"을 눌렀거나 매일 dailyHour 시(기본 9시)일 때만 실제로 더존을 읽어 보낸다)
+          node dozone-sync.js --auto          (작업 스케줄러용: 매일 dailyHour시(기본 9시)에 한 번 실행된다. 그룹웨어 로그인 확인 → 웹앱에 노트북 상태 알림 →
+                                               그날 아직 안 돌았거나 웹앱에서 "지금 더존과 연동"을 눌러 두었으면 더존을 읽어 보낸다. 주기는 register-tasks.js)
    설치:  install.bat 을 더블클릭하면 모듈 설치 → 설정 → 작업 스케줄러 등록까지 한 번에 된다 */
 const fs = require('fs'), path = require('path');
 const args = new Set(process.argv.slice(2)); const cfgPath = path.join(__dirname, 'config.json');
