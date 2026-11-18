@@ -1,4 +1,5 @@
 *.bat text eol=crlf
+*.vbs text eol=crlf
 *.js text eol=lf
 *.json text eol=lf
 *.md text eol=lf

@@ -65,7 +65,8 @@ async function pollApp() {
 function dueNow(poll) {
   const d0 = new Date(); const today = d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0') + '-' + String(d0.getDate()).padStart(2, '0'); const hour = d0.getHours(); const dailyHour = Number(cfg.dailyHour == null ? 9 : cfg.dailyHour);
   const ranToday = fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8').trim() === today;
-  const daily = hour >= dailyHour && !ranToday; /* 9시에 PC가 꺼져 있었으면 그날 처음 켜졌을 때 한 번 */
+  /* --only-requested: 5분마다 창 없이 도는 확인 작업. 웹앱에서 "지금 더존과 연동"을 눌렀을 때만 돌고, 매일 정기 실행은 09:00 작업이 맡는다 */
+  const daily = !args.has('--only-requested') && hour >= dailyHour && !ranToday; /* 9시에 PC가 꺼져 있었으면 그날 처음 켜졌을 때 한 번 */
   return { due: !!poll.requested || daily, today, why: poll.requested ? '화면에서 지금 연동 요청' : daily ? '매일 ' + dailyHour + '시 정기 실행' : '' };
 }
 
