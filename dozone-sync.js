@@ -57,9 +57,12 @@ async function keepAlive() {
 }
 
 /* ---- 웹앱에 묻기(5분마다): 화면에서 "지금 더존과 연동"을 눌렀는지. 이때 노트북 상태(로그인·마지막 실행·오류)도 같이 알려 더존 연동 카드에 보이게 한다 ---- */
+/* 원격 진단용: 지금 노트북에 받아진 git 버전(자동 업데이트가 됐는지)과 로그 끝부분 */
+function gitVersion() { try { const g = path.join(__dirname, '.git'); const head = fs.readFileSync(path.join(g, 'HEAD'), 'utf8').trim(); if (!/^ref:/.test(head)) return head.slice(0, 7); const ref = head.slice(5).trim(); const f = path.join(g, ref); if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8').trim().slice(0, 7); const packed = fs.readFileSync(path.join(g, 'packed-refs'), 'utf8').split('\n').find(l => l.endsWith(' ' + ref)); return packed ? packed.slice(0, 7) : ''; } catch (e) { return ''; } }
+function tail(file, n) { try { const t = fs.readFileSync(path.join(__dirname, file), 'utf8'); return t.split(/\r?\n/).filter(l => l.trim()).slice(-n).map(l => l.slice(0, 160)).join('\n'); } catch (e) { return ''; } }
 async function pollApp() {
   const st = readState();
-  try { return await sendToApp(cfg.appUrl, { key: cfg.key, action: 'poll', state: { login: st.login || '', loginCheckedAt: st.loginCheckedAt || '', lastRunAt: st.lastRunAt || '', lastResult: st.lastResult || '', lastError: st.lastError || '', lastErrorAt: st.lastErrorAt || '' } }); }
+  try { return await sendToApp(cfg.appUrl, { key: cfg.key, action: 'poll', state: { login: st.login || '', loginCheckedAt: st.loginCheckedAt || '', lastRunAt: st.lastRunAt || '', lastResult: st.lastResult || '', lastError: st.lastError || '', lastErrorAt: st.lastErrorAt || '', version: gitVersion(), mode: args.has('--only-requested') ? 'check' : 'daily', logTail: tail('sync.log', 12), updTail: tail('update.log', 4) } }); }
   catch (e) { log('웹앱에 닿지 못함: ' + e.message); return {}; }
 }
 function dueNow(poll) {
