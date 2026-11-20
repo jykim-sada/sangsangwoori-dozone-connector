@@ -68,8 +68,8 @@ async function pollApp() {
 function dueNow(poll) {
   const d0 = new Date(); const today = d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0') + '-' + String(d0.getDate()).padStart(2, '0'); const hour = d0.getHours(); const dailyHour = Number(cfg.dailyHour == null ? 9 : cfg.dailyHour);
   const ranToday = fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8').trim() === today;
-  /* --only-requested: 5분마다 창 없이 도는 확인 작업. 웹앱에서 "지금 더존과 연동"을 눌렀을 때만 돌고, 매일 정기 실행은 09:00 작업이 맡는다 */
-  const daily = !args.has('--only-requested') && hour >= dailyHour && !ranToday; /* 9시에 PC가 꺼져 있었으면 그날 처음 켜졌을 때 한 번 */
+  /* 정기 실행은 하루 한 번(dailyHour 시 이후 그날 처음). 09:00 작업이 맡지만, 그 시각에 노트북이 꺼져 있거나 절전·배터리라 건너뛴 날은 5분 확인 작업(--only-requested)이 켜진 뒤 한 번 따라잡는다 */
+  const daily = hour >= dailyHour && !ranToday;
   return { due: !!poll.requested || daily, today, why: poll.requested ? '화면에서 지금 연동 요청' : daily ? '매일 ' + dailyHour + '시 정기 실행' : '' };
 }
 
@@ -98,6 +98,9 @@ async function sendToApp(appUrl, body) {
     await keepAlive(); const poll = await pollApp(); due = dueNow(poll); if (!due.due) return;
     const st = readState();
     if (st.login === 'expired') { const lastHold = Date.parse(st.holdLoggedAt || '') || 0; if (Date.now() - lastHold > 60 * 60000) { log('실행 보류(' + due.why + '): 그룹웨어 로그인 만료. "연동 시험.bat"으로 다시 로그인하면 바로 이어서 돕니다'); writeState({ holdLoggedAt: nowIso() }); } return; }
+    /* 09:00 작업과 5분 확인 작업이 같은 때 돌지 않게 잠금(40분 지나면 풀린 것으로 본다) */
+    const lockFile = path.join(__dirname, '.running'); try { const t = Date.parse(fs.readFileSync(lockFile, 'utf8')) || 0; if (Date.now() - t < 40 * 60000) return; } catch (e) {}
+    fs.writeFileSync(lockFile, nowIso()); process.on('exit', () => { try { fs.unlinkSync(lockFile); } catch (e) {} });
     log('실행: ' + due.why);
   }
   const items = (await readItems()).filter(x => x && x.approvalNo);

@@ -17,12 +17,14 @@ const tasks = [
 if (fs.existsSync(path.join(dir, '.git')) && fs.existsSync(path.join(dir, '자동업데이트.bat'))) tasks.push({ name: '원천세 더존 연동 업데이트', tr: '"' + path.join(dir, '자동업데이트.bat') + '"', at: updAt, when: '매일 ' + updAt + ' GitHub 에서 새 파일 받기' });
 /* 웹앱의 "지금 더존과 연동" 버튼용. 첫 인자로 node.exe 전체 경로를 넘긴다(작업 스케줄러에서는 PATH 에 node 가 없을 수 있다). 더존 정기 읽기는 위의 09:00 작업뿐 */
 if (fs.existsSync(path.join(dir, 'run-hidden.vbs'))) tasks.push({ name: CHECK, tr: 'wscript.exe "' + path.join(dir, 'run-hidden.vbs') + '" "' + process.execPath + '" --auto --only-requested', every: 5, when: '5분마다 창 없이 웹앱 버튼 확인 (눌렸을 때만 더존 읽기)' });
+/* 작업 스케줄러 기본값은 "예약 시각에 꺼져 있으면 건너뜀", "전원 연결 시에만 실행"이라 노트북에서는 08:50·09:00 을 자주 놓친다 → 켜진 뒤 바로 실행·배터리여도 실행으로 바꾼다 */
+function relax(name) { const ps = "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew; Set-ScheduledTask -TaskName '" + name.replace(/'/g, "''") + "' -Settings $s | Out-Null"; if (show) { console.log('powershell', ps); return true; } const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')], { encoding: 'utf8' }); return r.status === 0; }
 let fail = 0;
 tasks.forEach(t => {
   const args = t.every ? ['/Create', '/F', '/SC', 'MINUTE', '/MO', String(t.every), '/TN', t.name, '/TR', t.tr] : ['/Create', '/F', '/SC', 'DAILY', '/ST', t.at, '/TN', t.name, '/TR', t.tr];
-  if (show) { console.log('schtasks', args.join(' ')); return; }
+  if (show) { console.log('schtasks', args.join(' ')); relax(t.name); return; }
   const r = spawnSync('schtasks', args, { stdio: 'inherit' });
-  if (r.status === 0) console.log('등록: "' + t.name + '" — ' + t.when); else { fail++; console.log('등록 실패: "' + t.name + '" (관리자 권한으로 다시 실행하거나 작업 스케줄러에서 직접 등록: ' + t.tr + ')'); }
+  if (r.status === 0) console.log('등록: "' + t.name + '" — ' + t.when + (relax(t.name) ? ' (놓치면 켜진 뒤 바로·배터리여도 실행)' : ' (놓친 실행 따라잡기 설정은 못 했습니다 — 작업은 그대로 동작)')); else { fail++; console.log('등록 실패: "' + t.name + '" (관리자 권한으로 다시 실행하거나 작업 스케줄러에서 직접 등록: ' + t.tr + ')'); }
 });
 if (!show) {
   console.log(fail ? '\n일부 등록에 실패했습니다.' : '\n작업 스케줄러 등록 완료: 더존 읽기는 매일 ' + runAt + ' 한 번 + 웹앱의 "지금 더존과 연동" 버튼(5분 안에, 창 없이). 노트북에서 직접은 "지금 더존과 연동.bat".');
